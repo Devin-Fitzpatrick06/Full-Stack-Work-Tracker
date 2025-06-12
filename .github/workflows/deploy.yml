@@ -1,0 +1,50 @@
+name: Deploy WorkTrak
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Install Python dependencies
+      run: |
+        cd worktrak-backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Node.js dependencies
+      run: |
+        cd worktrak
+        npm install
+        
+    - name: Run backend tests
+      run: |
+        cd worktrak-backend
+        python -m pytest
+        
+    - name: Run frontend tests
+      run: |
+        cd worktrak
+        npm test
+        
+    - name: Build frontend
+      run: |
+        cd worktrak
+        npm run build 

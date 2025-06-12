@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./worktrak
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://localhost/api
+
+  backend:
+    build: ./worktrak-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=sqlite:///worktrak.db
+      - FLASK_ENV=production
+    volumes:
+      - ./worktrak-backend/data:/app/data 
