@@ -20,6 +20,8 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import WeeklyChart from './components/WeeklyChart';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const categories = [
   'School',
   'Internship',
@@ -46,7 +48,7 @@ function App() {
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:5000/logs');
+      const response = await fetch(`${API_URL}/logs`);
       const data = await response.json();
       setLogs(data.logs);
       setError(null);
@@ -70,7 +72,7 @@ function App() {
     };
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/log', {
+      const response = await fetch(`${API_URL}/log`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
