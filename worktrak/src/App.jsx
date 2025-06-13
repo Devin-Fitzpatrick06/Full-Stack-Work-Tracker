@@ -19,6 +19,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import WeeklyChart from './components/WeeklyChart';
+import Auth from './components/Auth';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -40,17 +41,29 @@ function App() {
   const [filterCategory, setFilterCategory] = useState('All');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [user, setUser] = useState(() => {
+    const stored = localStorage.getItem('user');
+    return stored ? JSON.parse(stored) : null;
+  });
+
+  // Helper to get JWT
+  const getToken = () => localStorage.getItem('jwt');
 
   useEffect(() => {
-    fetchLogs();
-  }, []);
+    if (user) fetchLogs();
+    // eslint-disable-next-line
+  }, [user]);
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/logs`);
+      const response = await fetch(`${API_URL}/logs`, {
+        headers: {
+          Authorization: `Bearer ${getToken()}`
+        }
+      });
       const data = await response.json();
-      setLogs(data.logs);
+      setLogs(data.logs || []);
       setError(null);
     } catch (error) {
       setError('Failed to fetch logs. Please try again later.');
@@ -75,21 +88,24 @@ function App() {
       const response = await fetch(`${API_URL}/log`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`
         },
         body: JSON.stringify(log)
       });
 
       const result = await response.json();
-      console.log('Server says:', result.message);
-      await fetchLogs(); // Refresh logs after successful submission
-      
-      // Reset form
-      setTitle('');
-      setCategory('');
-      setMinutes('');
-      setDate(new Date());
-      setError(null);
+      if (!response.ok) {
+        setError(result.error || 'Failed to save log.');
+      } else {
+        await fetchLogs(); // Refresh logs after successful submission
+        // Reset form
+        setTitle('');
+        setCategory('');
+        setMinutes('');
+        setDate(new Date());
+        setError(null);
+      }
     } catch (error) {
       setError('Failed to save log. Please try again.');
       console.error('Error sending log:', error);
@@ -98,12 +114,33 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('jwt');
+    localStorage.removeItem('user');
+    setUser(null);
+    setLogs([]);
+  };
+
+  if (!user) {
+    return <Auth onAuth={setUser} />;
+  }
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Typography variant="h3" component="h1" gutterBottom align="center">
-          WorkTrak Logger
-        </Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h3" component="h1" gutterBottom>
+            WorkTrak Logger
+          </Typography>
+          <Box>
+            <Typography variant="subtitle1" sx={{ mr: 2, display: 'inline' }}>
+              {user?.username}
+            </Typography>
+            <Button variant="outlined" color="secondary" onClick={handleLogout}>
+              Logout
+            </Button>
+          </Box>
+        </Box>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
