@@ -14,6 +14,7 @@ import {
   Chip,
   CircularProgress,
   Alert,
+  Snackbar,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -41,6 +42,7 @@ function App() {
   const [filterCategory, setFilterCategory] = useState('All');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('user');
     return stored ? JSON.parse(stored) : null;
@@ -48,6 +50,51 @@ function App() {
 
   // Helper to get JWT
   const getToken = () => localStorage.getItem('jwt');
+
+  // Helper to check if token is expired
+  const isTokenExpired = () => {
+    const token = getToken();
+    if (!token) return true;
+    
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp * 1000 < Date.now();
+    } catch {
+      return true;
+    }
+  };
+
+  // Helper to handle API calls with error handling
+  const apiCall = async (url, options = {}) => {
+    const token = getToken();
+    
+    if (isTokenExpired()) {
+      handleLogout();
+      throw new Error('Session expired. Please log in again.');
+    }
+
+    const response = await fetch(`${API_URL}${url}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...options.headers,
+      },
+    });
+
+    if (response.status === 401) {
+      handleLogout();
+      throw new Error('Session expired. Please log in again.');
+    }
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Something went wrong');
+    }
+
+    return data;
+  };
 
   useEffect(() => {
     if (user) fetchLogs();
@@ -57,16 +104,11 @@ function App() {
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/logs`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`
-        }
-      });
-      const data = await response.json();
+      const data = await apiCall('/logs');
       setLogs(data.logs || []);
       setError(null);
     } catch (error) {
-      setError('Failed to fetch logs. Please try again later.');
+      setError(error.message);
       console.error('Error fetching logs:', error);
     } finally {
       setLoading(false);
@@ -78,36 +120,29 @@ function App() {
     setLoading(true);
 
     const log = {
-      title,
+      title: title.trim(),
       category,
-      minutes,
+      minutes: parseInt(minutes),
       date: date.toISOString().split('T')[0]
     };
 
     try {
-      const response = await fetch(`${API_URL}/log`, {
+      await apiCall('/log', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`
-        },
         body: JSON.stringify(log)
       });
 
-      const result = await response.json();
-      if (!response.ok) {
-        setError(result.error || 'Failed to save log.');
-      } else {
-        await fetchLogs(); // Refresh logs after successful submission
-        // Reset form
-        setTitle('');
-        setCategory('');
-        setMinutes('');
-        setDate(new Date());
-        setError(null);
-      }
+      setSuccessMessage('Activity logged successfully!');
+      await fetchLogs(); // Refresh logs after successful submission
+      
+      // Reset form
+      setTitle('');
+      setCategory('');
+      setMinutes('');
+      setDate(new Date());
+      setError(null);
     } catch (error) {
-      setError('Failed to save log. Please try again.');
+      setError(error.message);
       console.error('Error sending log:', error);
     } finally {
       setLoading(false);
@@ -119,7 +154,12 @@ function App() {
     localStorage.removeItem('user');
     setUser(null);
     setLogs([]);
+    setError(null);
+    setSuccessMessage('');
   };
+
+  const handleCloseError = () => setError(null);
+  const handleCloseSuccess = () => setSuccessMessage('');
 
   if (!user) {
     return <Auth onAuth={setUser} />;
@@ -134,7 +174,7 @@ function App() {
           </Typography>
           <Box>
             <Typography variant="subtitle1" sx={{ mr: 2, display: 'inline' }}>
-              {user?.username}
+              Welcome, {user?.username}!
             </Typography>
             <Button variant="outlined" color="secondary" onClick={handleLogout}>
               Logout
@@ -143,10 +183,17 @@ function App() {
         </Box>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mb: 2 }} onClose={handleCloseError}>
             {error}
           </Alert>
         )}
+
+        <Snackbar
+          open={!!successMessage}
+          autoHideDuration={3000}
+          onClose={handleCloseSuccess}
+          message={successMessage}
+        />
 
         <Grid container spacing={4}>
           <Grid item xs={12} md={6}>
@@ -162,6 +209,7 @@ function App() {
                   onChange={(e) => setTitle(e.target.value)}
                   required
                   margin="normal"
+                  inputProps={{ maxLength: 200 }}
                 />
 
                 <FormControl fullWidth margin="normal">
@@ -188,7 +236,8 @@ function App() {
                   onChange={(e) => setMinutes(e.target.value)}
                   required
                   margin="normal"
-                  inputProps={{ min: 1 }}
+                  inputProps={{ min: 1, max: 1440 }}
+                  helperText="Enter minutes (1-1440)"
                 />
 
                 <DatePicker
@@ -196,6 +245,7 @@ function App() {
                   value={date}
                   onChange={(newDate) => setDate(newDate)}
                   sx={{ width: '100%', mt: 2 }}
+                  maxDate={new Date()}
                 />
 
                 <Button
@@ -204,7 +254,7 @@ function App() {
                   color="primary"
                   fullWidth
                   sx={{ mt: 3 }}
-                  disabled={loading}
+                  disabled={loading || !title.trim() || !category || !minutes}
                 >
                   {loading ? <CircularProgress size={24} /> : 'Log Activity'}
                 </Button>
@@ -230,7 +280,7 @@ function App() {
               </Box>
 
               <Typography variant="h6" gutterBottom>
-                Past Activities
+                Past Activities ({logs.length})
               </Typography>
               <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
                 {loading ? (
@@ -238,7 +288,7 @@ function App() {
                     <CircularProgress />
                   </Box>
                 ) : logs.length === 0 ? (
-                  <Typography color="text.secondary">No logs yet.</Typography>
+                  <Typography color="text.secondary">No logs yet. Start by logging your first activity!</Typography>
                 ) : (
                   logs
                     .filter(log => filterCategory === 'All' || log.category === filterCategory)
@@ -246,10 +296,10 @@ function App() {
                       <Paper key={index} sx={{ p: 2, mb: 1 }}>
                         <Typography variant="subtitle1">{log.title}</Typography>
                         <Typography variant="body2" color="text.secondary">
-                          {log.category} — {log.minutes}
+                          {log.category} — {log.minutes} minutes
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {log.date}
+                          {new Date(log.date).toLocaleDateString()}
                         </Typography>
                       </Paper>
                     ))
